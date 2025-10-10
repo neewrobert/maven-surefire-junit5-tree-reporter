@@ -1,22 +1,19 @@
 package org.apache.maven.plugin.surefire.report;
 
 import org.apache.maven.surefire.api.report.ReportEntry;
+import org.apache.maven.surefire.api.report.SimpleReportEntry;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 import static java.util.Collections.singleton;
 import static java.util.Collections.singletonList;
 
 public class TestReportHandler {
 
+    protected static final Node node = Node.getRoot();
     protected static final Map<String, Set<String>> classNames = new ConcurrentHashMap<>();
     protected static final Map<String, List<WrappedReportEntry>> classEntries = new ConcurrentHashMap<>();
     protected static final Map<String, List<WrappedReportEntry>> testEntries = new ConcurrentHashMap<>();
@@ -37,12 +34,20 @@ public class TestReportHandler {
     }
 
     public void prepare() {
+        node.addNode(report);
         if (hasNestedTests()) {
             markClassNamesForNestedTests();
         }
     }
 
     public void print(BiFunction<List<WrappedReportEntry>, List<WrappedReportEntry>, TreePrinter> getTreePrinter) {
+        if (testSetStats != null) {
+            testSetStats.getReportEntries()
+                    .forEach(entry -> Node.getBranchNode(node, getTestClassPath(entry.getSourceName())).get().wrappedReportEntries.add(entry));
+        }
+        if (report != null) {
+            Node.getBranchNode(node, getTestClassPath(report.getSourceName())).get().setClassReportEntry((WrappedReportEntry) report);
+        }
         if (isMarkedAsNestedTest()) {
             prepareEntriesForNestedTests();
             if (isNestedTestReadyToPrint()) {
@@ -51,6 +56,10 @@ public class TestReportHandler {
         } else {
             printTests(getTreePrinter);
         }
+    }
+
+    List<String> getTestClassPath(String sourceName) {
+        return Arrays.stream(sourceName.split("\\$", -1)).collect(Collectors.toList());
     }
 
     private boolean isMarkedAsNestedTest() {
@@ -104,7 +113,7 @@ public class TestReportHandler {
         return getClassEntryList().size() == getClassNameList().size();
     }
 
-    private void printNestedTests(BiFunction<List<WrappedReportEntry>,List<WrappedReportEntry>, TreePrinter> getTreePrinter) {
+    private void printNestedTests(BiFunction<List<WrappedReportEntry>, List<WrappedReportEntry>, TreePrinter> getTreePrinter) {
         sortClassEntryList();
         getTreePrinter
                 .apply(getClassEntryList(), getTestEntryList())
@@ -112,7 +121,7 @@ public class TestReportHandler {
         cleanEntries();
     }
 
-    private void printTests(BiFunction<List<WrappedReportEntry>,List<WrappedReportEntry>, TreePrinter> getTreePrinter) {
+    private void printTests(BiFunction<List<WrappedReportEntry>, List<WrappedReportEntry>, TreePrinter> getTreePrinter) {
         getTreePrinter
                 .apply(singletonList((WrappedReportEntry) report), new ArrayList<>(testSetStats.getReportEntries()))
                 .printTests();
